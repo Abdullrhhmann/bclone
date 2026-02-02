@@ -62,7 +62,7 @@ const ProfilePage = () => {
   const profile = {
     name: selectedCreator || 'Unknown Creator',
     avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedCreator || 'User')}&size=120&background=random`,
-    coverImage: creatorProjects[0]?.images[0] || 'https://via.placeholder.com/1200/2C2C2C/FFFFFF?text=Cover',
+    coverImage: (creatorProjects[0]?.images && creatorProjects[0].images.length > 0) ? creatorProjects[0].images[0] : 'https://via.placeholder.com/1200/2C2C2C/FFFFFF?text=Cover',
     status: 'Available Now',
     roles: creatorProjects[0]?.category || 'Creative Professional',
     location: creatorProjects[0]?.country || 'Unknown',
@@ -92,7 +92,7 @@ const ProfilePage = () => {
     work: creatorProjects.map((project, index) => ({
       id: project._id || index,
       title: project.imageTitle,
-      image: project.images[0],
+      image: (project.images && project.images.length > 0) ? project.images[0] : 'https://via.placeholder.com/400/2C2C2C/FFFFFF?text=No+Image',
       likes: project.likes > 1000 ? `${(project.likes / 1000).toFixed(1)}k` : project.likes,
       views: project.views > 1000 ? `${(project.views / 1000).toFixed(1)}k` : project.views,
     })),

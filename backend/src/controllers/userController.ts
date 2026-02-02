@@ -41,10 +41,12 @@ export const getCreatorProfile = async (req: Request, res: Response) => {
       projects: creatorCards.map(card => ({
         id: card._id,
         title: card.imageTitle,
-        image: card.images[0],
+        image: (card.images && card.images.length > 0) ? card.images[0] : null,
+        images: card.images || [],
         likes: card.likes,
         views: card.views,
         category: card.category,
+        country: card.country,
       })),
     };
 

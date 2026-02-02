@@ -1,5 +1,5 @@
 /**
- * Seed script to populate MongoDB with original card data from frontend
+ * Seed script to populate MongoDB with card data from seed-data/cards.json
  * Run with: ts-node src/seed.ts
  */
 
@@ -11,24 +11,13 @@ import fs from 'fs';
 
 dotenv.config();
 
-// Load data from frontend images.js file
-const dataFilePath = path.join(__dirname, '../../../frontend/src/data/content/images.js');
+// Load data from backend/seed-data/cards.json
+const dataFilePath = path.join(__dirname, '../seed-data/cards.json');
 
 async function loadCardData() {
   try {
-    // Read the file
     const fileContent = fs.readFileSync(dataFilePath, 'utf-8');
-    
-    // Extract the data array using regex
-    const dataMatch = fileContent.match(/export const data = \[([\s\S]*)\];/);
-    if (!dataMatch) {
-      throw new Error('Could not extract data from images.js');
-    }
-    
-    // Parse the extracted data
-    const dataStr = '[' + dataMatch[1] + ']';
-    const sampleCards = eval(dataStr) as any[];
-    
+    const sampleCards = JSON.parse(fileContent) as any[];
     return sampleCards;
   } catch (error) {
     console.error('Error loading card data:', error);
@@ -47,21 +36,30 @@ async function seedDatabase() {
     await CardModel.deleteMany({});
     console.log('✓ Cleared existing cards');
 
-    // Load original card data from frontend
+    // Load original card data from cards.json
     const sampleCards = await loadCardData();
-    console.log(`✓ Loaded ${sampleCards.length} cards from frontend data`);
+    console.log(`✓ Loaded ${sampleCards.length} cards from cards.json`);
 
-    // Transform field names to match schema (image-array -> images, etc)
+    // Transform field names to match schema
     const transformedCards = sampleCards.map((card: any) => {
       const transformed = { ...card };
-      if (card['image-array']) {
-        transformed.images = card['image-array'];
-        delete transformed['image-array'];
+      
+      // Use images field if it exists, otherwise use image-array
+      if (!transformed.images || transformed.images.length === 0) {
+        if (card['image-array'] && card['image-array'].length > 0) {
+          transformed.images = card['image-array'];
+        }
       }
+      
+      // Remove image-array field to avoid confusion
+      delete transformed['image-array'];
+      
+      // Transform file_extensions_list to file_extension_list
       if (card['file_extensions_list']) {
         transformed.file_extension_list = card['file_extensions_list'];
         delete transformed['file_extensions_list'];
       }
+      
       return transformed;
     });
 
