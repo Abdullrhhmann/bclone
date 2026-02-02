@@ -1,0 +1,22 @@
+export const tools=[
+    "Photoshop",
+    "Illustrator",
+    "InDesign",
+    "Sketch",
+    "Figma",
+    "CorelDRAW",
+    "Affinity Designer",
+    "GIMP",
+    "Canva",
+    "Blender",
+    "Adobe XD",
+    "Procreate",
+    "Autodesk SketchBook",
+    "Adobe After Effects",
+    "Adobe Premiere Pro",
+    "Cinema 4D",
+    "ZBrush",
+    "Unity",
+    "Substance Painter",
+    "Maya"
+  ]
