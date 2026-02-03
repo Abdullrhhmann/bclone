@@ -1,64 +1,60 @@
 import { MessageCircle, X } from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useAppState } from "../../context/Context";
-import { HOST } from './../../data';
+import apiClient from "../../services/apiClient";
 
 const Modal = () => {
-  const { openModal, setOpenModal, setCurrentPage, setSelectedCreator } = useAppState(false);
-  const [time, setTime] = useState(1);
-  const[alreadyLiked,setAlreadyLiked] = useState(false)
-  const intervalRef = useRef(null);
-  const [liked, setLiked] = useState(false);
-
-  const countDown = () => {
-    setTime((prevTime) => {
-      if (prevTime > 0) {
-        return prevTime - 1;
-      } else {
-        const res=updateLikes(item._id);
-        if(res==0) return 0;
-        clearInterval(intervalRef.current);
-        setAlreadyLiked(true)
-        setLiked(false);
-        return 0;
-      }
-    });
-  };
-
-  const startCountdown = () => {
-    if(alreadyLiked) return;
-    setLiked(true);
-    // if (intervalRef.current) return; // Prevent multiple intervals
-    intervalRef.current = setInterval(countDown, 1000);
-  };
+  const { openModal, setOpenModal, setCurrentPage, setSelectedCreator, user, isAuthenticated, setLoginActive } = useAppState(false);
   const item = JSON.parse(localStorage.getItem("item"));
-  useEffect(()=>{
-    console.log(time)
-  },[time])
+  const [isLiked, setIsLiked] = useState(() => {
+    if (!item || !user?._id) return false;
+    return Array.isArray(item.appreciations)
+      ? item.appreciations.some((id) => id === user._id || id?._id === user._id)
+      : false;
+  });
+  const [liking, setLiking] = useState(false);
+
+  const imageUrls = useMemo(() => {
+    if (!item) return [];
+    const moduleImages = Array.isArray(item.modules)
+      ? item.modules
+          .filter((m) => m.type === 'image' && m.image?.url)
+          .map((m) => m.image.url)
+      : [];
+    const cover = item.coverImage?.url ? [item.coverImage.url] : [];
+    return [...cover, ...moduleImages];
+  }, [item]);
   const navigateToCreatorProfile = () => {
-    if (!item?.creatorName) return;
-    setSelectedCreator(item.creatorName);
+    if (!item?.owner?.username && !item?.owner?.displayName) return;
+    setSelectedCreator(item?.owner?.username || item?.owner?.displayName);
     setCurrentPage('profile');
     setOpenModal(false);
   };
 
-  async function updateLikes(id) {
-    if(alreadyLiked) return
-    // const items = JSON.parse(localStorage.getItem("items"));
-    // const index = items.findIndex((item) => item.id === id);
-    // items[index].likes += 1;
-    // localStorage.setItem("items", JSON.stringify(items));
-    const response=await fetch(`${HOST}cards/like/${id}`,{
-      method:"GET",
-      headers:{
-        "Content-Type":"application json",
-      }
-    })
-    const data=await response.json()
-    if(!response.ok){
-      return 0;
+  const handleLike = async () => {
+    if (!item?._id) return;
+    if (!isAuthenticated) {
+      setLoginActive(true);
+      return;
     }
-  }
+
+    setLiking(true);
+    try {
+      if (isLiked) {
+        const result = await apiClient.removeAppreciation(item._id);
+        if (result.success) {
+          setIsLiked(false);
+        }
+      } else {
+        const result = await apiClient.appreciateProject(item._id);
+        if (result.success) {
+          setIsLiked(true);
+        }
+      }
+    } finally {
+      setLiking(false);
+    }
+  };
   return (
     <div className="fixed flex justify-center z-30 inset-0  backdrop-blur-sm brightness">
       <div className="flex flex-col gap-8 w-[90%] p-6 overflow-y-auto componentScroll">
@@ -72,14 +68,14 @@ const Modal = () => {
               />
             </div>
             <div className="flex flex-col text-white ">
-              <div className="flex font-bold">{item.imageTitle}</div>
+              <div className="flex font-bold">{item.title}</div>
               <div className="flex font-semibold gap-2">
                 <button
                   type="button"
                   className="hover:underline"
                   onClick={navigateToCreatorProfile}
                 >
-                  {item.creatorName}
+                  {item?.owner?.displayName || item?.owner?.username}
                 </button>
                 <h1>•</h1>
                 <h1>Follow</h1>
@@ -94,7 +90,7 @@ const Modal = () => {
           </div>
         </div>
         <div className="flex flex-col gap-4">
-          {item.images.map((image, index) => (
+          {imageUrls.map((image, index) => (
             <img
               key={index}
               src={image}
@@ -188,22 +184,21 @@ const Modal = () => {
               <div className="flex flex-col gap-1">
                 <div
                   className={`flex flex-col items-center justify-center text-sm ${
-                    alreadyLiked ? "bg-black" : "bg-blue-500"
-                  } hover:bg-blue1 transform duration-300 cursor-pointer w-12 p-4 h-12 rounded-full like-button`}
-                  onClick={() => {startCountdown();}}
+                    isLiked ? "bg-black" : "bg-blue-500"
+                  } hover:bg-blue1 transform duration-300 cursor-pointer w-12 p-4 h-12 rounded-full like-button ${
+                    liking ? 'opacity-70' : ''
+                  }`}
+                  onClick={handleLike}
                 >
-                  {liked && time > 0 && (
-                    <h1 className="text-white ">+1</h1>
-                  )}
-                  {!liked && (
+                  {!isLiked && (
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0.5 0.5 16 16"
-                      className={`like-button ${liked ? "liked" : ""}`}
+                      className={`like-button ${isLiked ? "liked" : ""}`}
                     >
                       <path fill="none" d="M.5.5h16v16H.5z"></path>
                       <path
-                        fill={liked ? "#fff" : "#fff"}
+                        fill="#fff"
                         d="M.5 7.5h3v8h-3zM7.207 15.207c.193.19.425.29.677.293H12c.256 0 .512-.098.707-.293l2.5-2.5c.19-.19.288-.457.293-.707V8.5c0-.553-.445-1-1-1h-5L11 5s.5-.792.5-1.5v-1c0-.553-.447-1-1-1l-1 2-4 4v6l1.707 1.707z"
                       ></path>
                     </svg>
@@ -211,8 +206,7 @@ const Modal = () => {
                 </div>
                 <div className="flex justify-center">
                   <h1 className="text-sm sm:text-gray-400 font-semibold text-white">
-                    {alreadyLiked? "" : "Like"}
-                    {alreadyLiked && `${item.likes+1} likes`}
+                    {isLiked ? "Liked" : "Like"}
                   </h1>
                 </div>
               </div>

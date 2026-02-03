@@ -12,14 +12,30 @@ import Navbar from '../components/Navbar/Navbar';
 import { useAppState } from '../context/Context';
 import apiClient from '../services/apiClient';
 
+// Map frontend categories to backend field enum values
+const mapCategoryToField = (category) => {
+  const categoryMap = {
+    'graphic-design': 'Graphic Design',
+    'web-design': 'Web Design',
+    'illustration': 'Illustration',
+    'branding': 'Branding',
+    'motion-design': 'Motion Graphics',
+    '3d-design': '3D Art',
+    'photography': 'Photography',
+    'ui-ux': 'UI/UX',
+    'fashion': 'Fashion',
+    'architecture': 'Architecture',
+  };
+  return categoryMap[category] || 'Other';
+};
+
 const CreateProjectPage = () => {
   const { setCurrentPage, user, isAuthenticated } = useAppState();
   const [formData, setFormData] = useState({
-    imageTitle: '',
+    title: '',
     description: '',
     category: '',
     type: '',
-    price_type: 'free',
     tools: [],
     images: [],
     colors_used: [],
@@ -108,18 +124,15 @@ const CreateProjectPage = () => {
 
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const imageData = event.target.result;
-        setPreviewImages(prev => [...prev, imageData]);
-        setFormData(prev => ({
-          ...prev,
-          images: [...prev.images, imageData],
-        }));
-      };
-      reader.readAsDataURL(file);
-    });
+    if (files.length === 0) return;
+
+    setFormData(prev => ({
+      ...prev,
+      images: [...prev.images, ...files],
+    }));
+
+    const previews = files.map((file) => URL.createObjectURL(file));
+    setPreviewImages(prev => [...prev, ...previews]);
   };
 
   const handleRemoveImage = (index) => {
@@ -131,20 +144,12 @@ const CreateProjectPage = () => {
   };
 
   const validateForm = () => {
-    if (!formData.imageTitle.trim()) {
+    if (!formData.title.trim()) {
       setError('Project title is required');
       return false;
     }
     if (formData.images.length === 0) {
       setError('At least one image is required');
-      return false;
-    }
-    if (!formData.category) {
-      setError('Please select a category');
-      return false;
-    }
-    if (!formData.type) {
-      setError('Please select a project type');
       return false;
     }
     setError('');
@@ -163,26 +168,57 @@ const CreateProjectPage = () => {
     setSuccess('');
 
     try {
-      // Prepare data for submission
+      // Upload images first
+      const form = new FormData();
+      formData.images.forEach((file) => form.append('files', file));
+
+      const uploadResult = await apiClient.uploadProjectImages(form);
+      if (!uploadResult?.success) {
+        setError(uploadResult?.error || 'Failed to upload images');
+        setLoading(false);
+        return;
+      }
+
+      const uploaded = uploadResult.data?.data || uploadResult.data || [];
+      if (uploaded.length === 0) {
+        setError('No images were uploaded');
+        setLoading(false);
+        return;
+      }
+
+      const cover = uploaded[0];
+      const modules = uploaded.map((file, index) => ({
+        type: 'image',
+        order: index + 1,
+        url: file.url,
+        image: {
+          url: file.url,
+          filename: file.filename,
+          width: file.width,
+          height: file.height,
+          dominantColor: file.dominantColor
+        },
+        caption: ''
+      }));
+
       const projectData = {
-        imageTitle: formData.imageTitle,
-        creatorName: `${user.firstName} ${user.lastName}`,
-        category: formData.category,
-        type: formData.type,
-        price_type: formData.price_type,
+        title: formData.title,
+        description: formData.description,
+        coverImage: {
+          url: cover.url,
+          filename: cover.filename,
+          width: cover.width,
+          height: cover.height,
+          dominantColor: cover.dominantColor
+        },
+        modules,
+        fields: formData.category ? [mapCategoryToField(formData.category)] : [],
+        tags: formData.type ? [formData.type] : [],
         tools: formData.tools,
-        colors_used: formData.colors_used,
-        images: formData.images,
-        likes: 0,
-        views: 0,
-        country: 'USA', // Default, can be enhanced
-        file_extension: '.jpg',
-        availability: 'full time',
+        colors: [] // Colors require hex format, skip for now
       };
 
-      // Call backend API to create card
-      const result = await apiClient.createCard(projectData);
-
+      const result = await apiClient.createProject(projectData);
       if (result.success) {
         setSuccess('Project created successfully! Redirecting to your profile...');
         setTimeout(() => {
@@ -242,12 +278,12 @@ const CreateProjectPage = () => {
             <label className="block text-sm font-semibold text-gray-900 mb-2">
               Project Title *
             </label>
-            <input
-              type="text"
-              name="imageTitle"
-              value={formData.imageTitle}
-              onChange={handleInputChange}
-              placeholder="Give your project a compelling title"
+              <input
+                type="text"
+                name="title"
+                value={formData.title}
+                onChange={handleInputChange}
+                placeholder="Give your project a compelling title"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               disabled={loading}
             />
@@ -338,29 +374,6 @@ const CreateProjectPage = () => {
                   </option>
                 ))}
               </select>
-            </div>
-          </div>
-
-          {/* Price Type */}
-          <div className="bg-white rounded-lg p-6 shadow-sm">
-            <label className="block text-sm font-semibold text-gray-900 mb-2">
-              Availability
-            </label>
-            <div className="flex gap-4">
-              {['free', 'paid', 'subscription'].map(priceType => (
-                <label key={priceType} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="price_type"
-                    value={priceType}
-                    checked={formData.price_type === priceType}
-                    onChange={handleInputChange}
-                    disabled={loading}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-gray-700 capitalize">{priceType}</span>
-                </label>
-              ))}
             </div>
           </div>
 

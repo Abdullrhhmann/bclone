@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import authRoutes from "./routes/authRoutes";
 import userRoutes from "./routes/userRoutes";
-
+import uploadRoutes from "./routes/uploadRoutes";
 import morgan from 'morgan';
 import cardRoutes from "./routes/cardRoutes";
 dotenv.config();
@@ -22,6 +22,9 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// Serve uploaded files statically
+app.use('/uploads', express.static('uploads'));
+
 // const port = parseInt(process.env.PORT || '80', 10);
 const port = parseInt(process.env.PORT || '5000', 10);
 app.get('/', (req: Request, res: Response) => {
@@ -32,6 +35,7 @@ app.get('/', (req: Request, res: Response) => {
 app.use(morgan('tiny'));
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/upload', uploadRoutes);
 app.use('/api/cards', cardRoutes);
 
 app.listen(port,host, () => {

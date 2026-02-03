@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 /* eslint-disable react/prop-types */
-import  { createContext, useContext, useState } from "react";
+import  { createContext, useContext, useState, useEffect, useRef } from "react";
+import apiClient from "../services/apiClient";
 
 const AppContext = createContext(undefined);
 
@@ -12,7 +13,8 @@ export function AppProvider({ children }) {
   const [signupActive, setSignupActive] = useState(false);
   const [loginActive, setLoginActive] = useState(false);
   const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('accessToken'));
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('home');
   const [selectedCreator, setSelectedCreator] = useState(null);
   
@@ -24,6 +26,34 @@ export function AppProvider({ children }) {
     tools: [],
     color: []
   });
+
+  // Initialize user on app mount - check if already logged in with httpOnly cookie
+  const didInitAuth = useRef(false);
+
+  useEffect(() => {
+    if (didInitAuth.current) return;
+    didInitAuth.current = true;
+
+    const initializeAuth = async () => {
+      try {
+        const response = await apiClient.getProfile();
+        if (response.success && response.data) {
+          setUser(response.data.data || response.data.user);
+          setIsAuthenticated(true);
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        setUser(null);
+        setIsAuthenticated(false);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeAuth();
+  }, []);
 
   return (
     <AppContext.Provider
@@ -44,6 +74,7 @@ export function AppProvider({ children }) {
         setUser,
         isAuthenticated,
         setIsAuthenticated,
+        isLoading,
         activeFilters,
         setActiveFilters,
         currentPage,

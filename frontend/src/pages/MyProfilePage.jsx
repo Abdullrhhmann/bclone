@@ -28,7 +28,7 @@ const MyProfilePage = () => {
   const [userProjects, setUserProjects] = useState([]);
   const [userStats, setUserStats] = useState({
     views: 0,
-    likes: 0,
+    appreciations: 0,
     followers: 0,
     following: 0,
   });
@@ -43,32 +43,38 @@ const MyProfilePage = () => {
 
       setLoading(true);
       try {
-        // Fetch user's own profile data
-        const result = await apiClient.getUserProfile();
-        if (result.success) {
-          const userData = result.data?.data || result.data;
-          
-          // Fetch user's created projects/cards
-          const allCardsResult = await apiClient.getAllCards();
-          if (allCardsResult.success) {
-            const allCards = allCardsResult.data?.properties || [];
-            const userCards = allCards.filter(card => card.creatorName === user.firstName + ' ' + user.lastName);
-            setUserProjects(userCards);
+        // Fetch user's own projects
+        const projectsResult = await apiClient.getUserProjects();
+        
+        console.log('getUserProjects response:', projectsResult);
+        
+        if (projectsResult?.success) {
+          const projects = Array.isArray(projectsResult.data) ? projectsResult.data : [];
+          setUserProjects(projects);
 
-            // Calculate stats
-            const totalViews = userCards.reduce((sum, card) => sum + (card.views || 0), 0);
-            const totalLikes = userCards.reduce((sum, card) => sum + (card.likes || 0), 0);
+          // Calculate stats from projects
+          const totalViews = projects.reduce(
+            (sum, proj) => sum + (proj.stats?.views ?? proj.views ?? 0),
+            0
+          );
+          const totalAppreciations = projects.reduce(
+            (sum, proj) => sum + (proj.stats?.appreciationsCount ?? proj.appreciationsCount ?? 0),
+            0
+          );
 
-            setUserStats({
-              views: totalViews,
-              likes: totalLikes,
-              followers: Math.floor(Math.random() * 500) + 100,
-              following: Math.floor(Math.random() * 200) + 50,
-            });
-          }
+          setUserStats({
+            views: totalViews,
+            appreciations: totalAppreciations,
+            followers: user.followers?.length || 0,
+            following: user.following?.length || 0,
+          });
+        } else {
+          console.error('Failed to fetch projects:', projectsResult);
+          setUserProjects([]);
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
+        setUserProjects([]);
       } finally {
         setLoading(false);
       }
@@ -77,9 +83,8 @@ const MyProfilePage = () => {
     fetchUserData();
   }, [isAuthenticated, user, setCurrentPage]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
+  const handleLogout = async () => {
+    await apiClient.logout();
     setUser(null);
     setIsAuthenticated(false);
     setCurrentPage('home');
@@ -115,8 +120,9 @@ const MyProfilePage = () => {
     );
   }
 
-  const userFullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+  const userDisplayName = user.displayName || user.username || 'User';
   const userEmail = user.email || 'user@example.com';
+  const avatarUrl = user.avatar?.url || `https://ui-avatars.com/api/?name=${encodeURIComponent(userDisplayName)}&size=128&background=random`;
 
   return (
     <div className="min-h-screen bg-white">
@@ -124,6 +130,9 @@ const MyProfilePage = () => {
 
       {/* Cover Image */}
       <div className="h-64 bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 relative">
+        {user.coverImage?.url && (
+          <img src={user.coverImage.url} alt="cover" className="w-full h-full object-cover" />
+        )}
         <button
           onClick={() => setCurrentPage('home')}
           className="absolute top-4 left-4 flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-full transition"
@@ -142,18 +151,17 @@ const MyProfilePage = () => {
               {/* Avatar */}
               <div className="w-32 h-32 rounded-full bg-gradient-to-br from-purple-400 to-indigo-600 border-4 border-white shadow-lg flex items-center justify-center overflow-hidden">
                 <img
-                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(userFullName)}&size=128&background=random`}
-                  alt={userFullName}
+                  src={avatarUrl}
+                  alt={userDisplayName}
                   className="w-full h-full object-cover"
                 />
               </div>
 
               {/* Basic Info */}
               <div className="pb-2">
-                <h1 className="text-4xl font-bold text-gray-900 mb-2">{userFullName}</h1>
+                <h1 className="text-4xl font-bold text-gray-900 mb-2">{userDisplayName}</h1>
                 <p className="text-gray-600 text-lg flex items-center gap-2">
-                  <span>Creative Professional</span>
-                  <CheckCircle2 size={20} className="text-blue-500" />
+                  <span>@{user.username}</span>
                 </p>
                 <p className="text-gray-500 text-sm mt-2">{userEmail}</p>
                 <p className="text-green-600 font-medium mt-1">✓ Available Now</p>
@@ -199,7 +207,7 @@ const MyProfilePage = () => {
             </div>
             <div className="text-center">
               <p className="text-2xl font-bold text-gray-900">
-                {userStats.likes > 1000 ? `${(userStats.likes / 1000).toFixed(1)}k` : userStats.likes}
+                {userStats.appreciations > 1000 ? `${(userStats.appreciations / 1000).toFixed(1)}k` : userStats.appreciations}
               </p>
               <p className="text-gray-600 flex items-center justify-center gap-1 mt-1">
                 <ThumbsUp size={16} />
@@ -258,7 +266,7 @@ const MyProfilePage = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {userProjects.map((project, index) => (
+                {Array.isArray(userProjects) && userProjects.map((project, index) => (
                   <div
                     key={project._id || index}
                     className="group bg-white rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-all cursor-pointer"
@@ -267,11 +275,11 @@ const MyProfilePage = () => {
                     <div className="relative h-64 bg-gray-200 overflow-hidden">
                       <img
                         src={
-                          project.images && project.images.length > 0
-                            ? project.images[0]
+                          project.coverImage?.url
+                            ? project.coverImage.url
                             : 'https://via.placeholder.com/400/2C2C2C/FFFFFF?text=No+Image'
                         }
-                        alt={project.imageTitle}
+                        alt={project.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
@@ -280,10 +288,10 @@ const MyProfilePage = () => {
                     {/* Project Info */}
                     <div className="p-4">
                       <h3 className="font-bold text-gray-900 mb-2 truncate">
-                        {project.imageTitle}
+                        {project.title}
                       </h3>
                       <p className="text-gray-600 text-sm mb-3 line-clamp-2">
-                        {project.category || 'Creative Work'}
+                        {project.description || 'Creative Work'}
                       </p>
 
                       {/* Stats */}
@@ -294,7 +302,7 @@ const MyProfilePage = () => {
                         </span>
                         <span className="flex items-center gap-1">
                           <ThumbsUp size={14} />
-                          {project.likes > 1000 ? `${(project.likes / 1000).toFixed(1)}k` : project.likes}
+                          {project.appreciationsCount > 1000 ? `${(project.appreciationsCount / 1000).toFixed(1)}k` : project.appreciationsCount}
                         </span>
                       </div>
                     </div>

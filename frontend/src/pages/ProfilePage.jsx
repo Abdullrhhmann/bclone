@@ -20,9 +20,12 @@ import apiClient from '../services/apiClient';
 
 const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState('work');
-  const { selectedCreator, setCurrentPage } = useAppState();
+  const { selectedCreator, setCurrentPage, user, isAuthenticated, setLoginActive } = useAppState();
+  const [creatorData, setCreatorData] = useState(null);
   const [creatorProjects, setCreatorProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
   useEffect(() => {
     const fetchCreatorData = async () => {
@@ -30,18 +33,27 @@ const ProfilePage = () => {
       
       setLoading(true);
       try {
-        const result = await apiClient.getCreatorProfile(selectedCreator);
+        // Fetch creator profile by username
+        const result = await apiClient.getUserByUsername(selectedCreator);
         if (result.success) {
-          const creatorData = result.data.data;
-          setCreatorProjects(creatorData.projects || []);
-        } else {
-          // Fallback to getAllCards if API fails
-          const allCardsResult = await apiClient.getAllCards();
-          if (allCardsResult.success) {
-            const filtered = allCardsResult.data.properties.filter(
-              (project) => project.creatorName === selectedCreator
+          const userData = result.data.user || result.data.data;
+          setCreatorData(userData);
+          if (userData?.followers && user?._id) {
+            const following = userData.followers.some(
+              (follower) => follower === user._id || follower?._id === user._id
             );
-            setCreatorProjects(filtered);
+            setIsFollowing(following);
+          } else {
+            setIsFollowing(false);
+          }
+          
+          // Fetch creator's projects
+          const projectsResult = await apiClient.getAllProjects(1, 50, { 
+            ownerUsername: selectedCreator 
+          });
+          if (projectsResult.success) {
+            const projects = projectsResult.data.data || projectsResult.data.projects || [];
+            setCreatorProjects(projects);
           }
         }
       } catch (error) {
@@ -54,46 +66,49 @@ const ProfilePage = () => {
     fetchCreatorData();
   }, [selectedCreator]);
 
+  if (!creatorData && loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Navbar />
+        <div className="text-gray-500">Loading creator profile...</div>
+      </div>
+    );
+  }
+
   // Calculate stats from actual projects
   const totalViews = creatorProjects.reduce((sum, project) => sum + (project.views || 0), 0);
-  const totalLikes = creatorProjects.reduce((sum, project) => sum + (project.likes || 0), 0);
+  const totalAppreciations = creatorProjects.reduce((sum, project) => sum + (project.appreciationsCount || 0), 0);
 
   // User profile data - dynamic based on selected creator
   const profile = {
-    name: selectedCreator || 'Unknown Creator',
-    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedCreator || 'User')}&size=120&background=random`,
-    coverImage: (creatorProjects[0]?.images && creatorProjects[0].images.length > 0) ? creatorProjects[0].images[0] : 'https://via.placeholder.com/1200/2C2C2C/FFFFFF?text=Cover',
+    name: creatorData?.displayName || selectedCreator || 'Unknown Creator',
+    username: creatorData?.username || selectedCreator || 'unknown',
+    avatar: creatorData?.avatar?.url || `https://ui-avatars.com/api/?name=${encodeURIComponent(creatorData?.displayName || selectedCreator || 'User')}&size=120&background=random`,
+    coverImage: creatorData?.coverImage?.url || 'https://via.placeholder.com/1200/2C2C2C/FFFFFF?text=Cover',
     status: 'Available Now',
-    roles: creatorProjects[0]?.category || 'Creative Professional',
-    location: creatorProjects[0]?.country || 'Unknown',
-    bio: `${creatorProjects.length} projects published`,
+    email: creatorData?.email || 'contact@example.com',
+    bio: creatorData?.bio || `${creatorProjects.length} projects published`,
     stats: {
       views: totalViews > 1000 ? `${(totalViews / 1000).toFixed(1)}k` : totalViews.toString(),
-      appreciations: totalLikes > 1000 ? `${(totalLikes / 1000).toFixed(1)}k` : totalLikes.toString(),
-      followers: Math.floor(Math.random() * 500) + 100,
-      following: Math.floor(Math.random() * 200) + 50,
+      appreciations: totalAppreciations > 1000 ? `${(totalAppreciations / 1000).toFixed(1)}k` : totalAppreciations.toString(),
+      followers: creatorData?.followersCount || 0,
+      following: creatorData?.followingCount || 0,
     },
     social: [
       { name: 'Facebook', url: '#' },
       { name: 'Instagram', url: '#' },
       { name: 'LinkedIn', url: '#' },
     ],
-    experience: [
-      {
-        title: creatorProjects[0]?.category || 'Creative Professional',
-        company: creatorProjects[0]?.country || 'Remote',
-      },
-    ],
-    memberSince: 'MEMBER SINCE 2024',
+    memberSince: `MEMBER SINCE ${new Date(creatorData?.createdAt || new Date()).getFullYear()}`,
   };
 
   // Project data
   const projects = {
     work: creatorProjects.map((project, index) => ({
       id: project._id || index,
-      title: project.imageTitle,
-      image: (project.images && project.images.length > 0) ? project.images[0] : 'https://via.placeholder.com/400/2C2C2C/FFFFFF?text=No+Image',
-      likes: project.likes > 1000 ? `${(project.likes / 1000).toFixed(1)}k` : project.likes,
+      title: project.title,
+      image: project.coverImage?.url || 'https://via.placeholder.com/400/2C2C2C/FFFFFF?text=No+Image',
+      appreciations: project.appreciationsCount > 1000 ? `${(project.appreciationsCount / 1000).toFixed(1)}k` : project.appreciationsCount,
       views: project.views > 1000 ? `${(project.views / 1000).toFixed(1)}k` : project.views,
     })),
     moodboards: [],
@@ -103,6 +118,28 @@ const ProfilePage = () => {
   const currentProjects = projects[activeTab] || projects.work;
   const handleBack = () => {
     setCurrentPage('home');
+  };
+  const handleFollow = async () => {
+    if (!isAuthenticated) {
+      setLoginActive(true);
+      return;
+    }
+    if (!creatorData?._id || followLoading) return;
+
+    const nextFollowing = !isFollowing;
+    setIsFollowing(nextFollowing);
+    setFollowLoading(true);
+
+    try {
+      const result = await apiClient.followUser(creatorData._id);
+      if (!result.success) {
+        setIsFollowing(!nextFollowing);
+      }
+    } catch (error) {
+      setIsFollowing(!nextFollowing);
+    } finally {
+      setFollowLoading(false);
+    }
   };
 
   if (loading) {
@@ -150,7 +187,7 @@ const ProfilePage = () => {
             Bringing your ideas to life with stunning visuals.
           </p>
           <div className="flex gap-4 text-white font-semibold text-sm tracking-wide">
-            <span>{profile.roles.split('|')[0].trim().toUpperCase()}</span>
+            <span>{profile?.roles ? profile.roles.split('|')[0].trim().toUpperCase() : 'CREATOR'}</span>
           </div>
         </div>
       </div>
@@ -169,6 +206,7 @@ const ProfilePage = () => {
                   className="w-32 h-32 rounded-full mb-4 object-cover"
                 />
                 <h1 className="text-2xl font-bold text-black">{profile.name}</h1>
+                <p className="text-gray-600 text-sm">@{profile.username}</p>
                 <div className="flex items-center gap-1 mt-1 justify-center">
                   <CheckCircle2 size={16} className="text-green-500" />
                   <span className="text-sm font-semibold text-green-600">
@@ -185,18 +223,22 @@ const ProfilePage = () => {
                 </div>
                 <div className="flex items-start gap-2">
                   <Briefcase size={16} className="text-gray-500 mt-0.5 flex-shrink-0" />
-                  <span>{profile.roles}</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <MapPin size={16} className="text-gray-500 mt-0.5 flex-shrink-0" />
-                  <span>{profile.location}</span>
+                  <span>{profile.email}</span>
                 </div>
               </div>
 
               {/* Action Buttons */}
               <div className="flex flex-col gap-3">
-                <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">
-                  Follow
+                <button
+                  onClick={handleFollow}
+                  disabled={followLoading}
+                  className={`w-full font-semibold py-3 rounded-lg transition ${
+                    isFollowing
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  } ${followLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                >
+                  {isFollowing ? 'Following' : 'Follow'}
                 </button>
                 <button className="w-full border-2 border-gray-300 hover:border-gray-400 text-gray-900 font-semibold py-2 rounded-lg transition">
                   Message
@@ -205,14 +247,14 @@ const ProfilePage = () => {
 
               {/* Hire Section */}
               <div className="border-t pt-6">
-                <h3 className="font-bold text-black mb-4">Hire {profile.name.split(' ')[0]}</h3>
+                <h3 className="font-bold text-black mb-4">Contact {profile.name}</h3>
                 <div className="space-y-3">
                   <a
-                    href="#"
+                    href={`mailto:${profile.email}`}
                     className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition"
                   >
                     <span className="text-sm font-semibold text-gray-900">
-                      Freelance Job
+                      Send Message
                     </span>
                     <ExternalLink size={14} className="text-gray-400" />
                   </a>
@@ -293,7 +335,7 @@ const ProfilePage = () => {
                   Work Experience
                 </h3>
                 <div className="space-y-4">
-                  {profile.experience.map((exp, idx) => (
+                  {profile.experience?.map((exp, idx) => (
                     <div key={idx} className="pb-4 border-b last:border-b-0">
                       <p className="text-sm font-semibold text-gray-900">
                         {exp.title}
@@ -366,7 +408,7 @@ const ProfilePage = () => {
                           <div className="flex items-center gap-1">
                             <ThumbsUp size={14} />
                             <span className="text-sm font-semibold">
-                              {project.likes}
+                              {project.appreciations}
                             </span>
                           </div>
                           <div className="flex items-center gap-1">

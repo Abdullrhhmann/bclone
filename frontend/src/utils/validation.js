@@ -34,15 +34,21 @@ export const validateName = (name) => {
   return name.trim().length >= 2;
 };
 
-export const validateSignupForm = (firstName, lastName, email, password) => {
+export const validateUsername = (username) => {
+  // 3-30 characters, alphanumeric (and underscore allowed)
+  const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+  return usernameRegex.test(username);
+};
+
+export const validateSignupForm = (username, displayName, email, password) => {
   const errors = {};
 
-  if (!firstName || !validateName(firstName)) {
-    errors.firstName = 'First name must be at least 2 characters';
+  if (!username || !validateUsername(username)) {
+    errors.username = 'Username must be 3-30 characters (alphanumeric and underscore only)';
   }
 
-  if (!lastName || !validateName(lastName)) {
-    errors.lastName = 'Last name must be at least 2 characters';
+  if (!displayName || !validateName(displayName)) {
+    errors.displayName = 'Display name must be at least 2 characters';
   }
 
   if (!email || !validateEmail(email)) {

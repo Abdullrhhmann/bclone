@@ -46,19 +46,11 @@ const PopupLogin = () => {
     try {
       const result = await apiClient.login(formData.email, formData.password);
       
-      if (result.success) {
-        const { accessToken, refreshToken } = result.data;
-        apiClient.setTokens(accessToken, refreshToken);
-        
-        // Fetch user profile and update context
-        const profileResult = await apiClient.getProfile();
-        if (profileResult.success) {
-          setUser(profileResult.data.user);
-        } else {
-          setUser({ email: formData.email });
-        }
-        
-        // Update authentication state
+      const loggedInUser = result.data?.data?.user;
+      if (result.success && loggedInUser) {
+        // Login successful - httpOnly cookie is automatically set by backend
+        // Update user context
+        setUser(loggedInUser);
         setIsAuthenticated(true);
         
         setMessage('✓ Login successful! Redirecting...');

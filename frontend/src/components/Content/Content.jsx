@@ -4,26 +4,24 @@ import React, { useEffect, useState } from "react";
 import PopupSign from "../Footer/PopupSign";
 import { useAppState } from "../../context/Context";
 import Modal from "./Modal";
-import { HOST } from "../../data";
 import apiClient from "../../services/apiClient";
 const ContentCard = ({ onCreatorClick, ...item }) => {
-  const {openModal, setOpenModal} = useAppState(false);
+  const { openModal, setOpenModal, user } = useAppState(false);
   const { isAuthenticated, setLoginActive } = useAppState();
   const [hoveredImage, setHoveredImage] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
-  const [likes, setLikes] = useState(item.likes || 0);
+  const [likes, setLikes] = useState(item?.stats?.appreciationsCount || item?.appreciationsCount || 0);
   const [liking, setLiking] = useState(false);
 
   // Check if user has liked this card on mount
   useEffect(() => {
-    if (isAuthenticated && item._id && item.likedBy) {
-      const userLiked = item.likedBy.some(likedUserId => {
-        // Note: Frontend would need user ID from context
-        return true; // This will be properly implemented when context has user._id
-      });
+    if (isAuthenticated && user?._id && item?._id && Array.isArray(item.appreciations)) {
+      const userLiked = item.appreciations.some(
+        (likedUserId) => likedUserId === user._id || likedUserId?._id === user._id
+      );
       setIsLiked(userLiked);
     }
-  }, [isAuthenticated, item._id, item.likedBy]);
+  }, [isAuthenticated, item?._id, item?.appreciations, user?._id]);
 
   const onMouseEnter = () => {
     setHoveredImage(true);
@@ -40,15 +38,28 @@ const ContentCard = ({ onCreatorClick, ...item }) => {
       return;
     }
 
+    const nextLiked = !isLiked;
+    setIsLiked(nextLiked);
+    setLikes((prev) => (nextLiked ? prev + 1 : Math.max(0, prev - 1)));
+
     setLiking(true);
     try {
-      const result = await apiClient.likeCard(item._id);
+      const result = await apiClient.appreciateProject(item._id);
       if (result.success) {
-        setIsLiked(result.data.liked);
-        setLikes(result.data.likes);
+        const updatedLikes =
+          result.data?.data?.stats?.appreciationsCount ??
+          result.data?.data?.appreciationsCount;
+        if (typeof updatedLikes === 'number') {
+          setLikes(updatedLikes);
+        }
+      } else {
+        setIsLiked(!nextLiked);
+        setLikes((prev) => (nextLiked ? Math.max(0, prev - 1) : prev + 1));
       }
     } catch (error) {
-      console.error('Error liking card:', error);
+      setIsLiked(!nextLiked);
+      setLikes((prev) => (nextLiked ? Math.max(0, prev - 1) : prev + 1));
+      console.error('Error appreciating project:', error);
     } finally {
       setLiking(false);
     }
@@ -64,9 +75,8 @@ const ContentCard = ({ onCreatorClick, ...item }) => {
         }}
       >
         <img
-          // src={item.images[(Math.random() * item.images.length) | 0]}
-          src={item.images[0]}
-          alt="random"
+          src={item?.coverImage?.url || item?.modules?.find((m) => m.type === 'image')?.image?.url}
+          alt={item?.title || 'project'}
           className="rounded-md w-[22rem] h-[16rem] object-cover"
           width={400}
           height={400}
@@ -90,14 +100,14 @@ const ContentCard = ({ onCreatorClick, ...item }) => {
       <div className="flex flex-col">
         <div className="flex justify-between items-center">
           <div className="flex">
-            <h1 className="font-bold">{item.imageTitle}</h1>
+            <h1 className="font-bold">{item.title}</h1>
           </div>
           <div className="flex gap-3 text-sm">
             <button
               onClick={handleLike}
               disabled={liking}
               className={`flex gap-1 items-center cursor-pointer transition-all duration-200 hover:scale-110 ${
-                isLiked ? 'text-blue-500' : 'text-gray-500'
+                isLiked ? 'text-red-500' : 'text-gray-500'
               } ${liking ? 'opacity-50' : ''}`}
               title={isAuthenticated ? 'Click to like' : 'Login to like'}
             >
@@ -111,9 +121,9 @@ const ContentCard = ({ onCreatorClick, ...item }) => {
             <div className="flex gap-1 items-center text-gray-500">
               <Eye size={16} className="text-gray-500" />
               <h1 className="font-bold">
-                {item.views > 1000
-                  ? `${(item.views / 1000).toFixed(1)}k`
-                  : item.views}
+                {item?.stats?.views > 1000
+                  ? `${(item.stats.views / 1000).toFixed(1)}k`
+                  : item?.stats?.views || 0}
               </h1>
             </div>
           </div>
@@ -124,10 +134,10 @@ const ContentCard = ({ onCreatorClick, ...item }) => {
             className="text-sm text-gray-500 mt-[-2px] hover:text-black"
             onClick={(e) => {
               e.stopPropagation();
-              if (onCreatorClick) onCreatorClick(item.creatorName);
+              if (onCreatorClick) onCreatorClick(item?.owner?.username || item?.owner?.displayName);
             }}
           >
-            {item.creatorName}
+            {item?.owner?.displayName || item?.owner?.username}
           </button>
         </div>
       </div>
@@ -158,14 +168,13 @@ const Content = () => {
   
   useEffect(() => {
     const fetchData = async () => {
-      const result = await apiClient.getAllCards();
-      console.log('API Response:', result);
-      if(result.success){
-        console.log('Setting cards data:', result.data.properties);
-        setCardsData(result.data.properties);
-        setOriginalData(result.data.properties);
+      const result = await apiClient.getAllProjects(1, 24);
+      if (result.success) {
+        const projects = result.data?.data || [];
+        setCardsData(projects);
+        setOriginalData(projects);
       } else {
-        console.error('Failed to fetch cards:', result.error);
+        console.error('Failed to fetch projects:', result.error);
       }
     }
     fetchData();
@@ -176,28 +185,46 @@ const Content = () => {
     const hasFilters = Object.values(activeFilters).some(arr => arr && arr.length > 0);
     
     if (searchQuery && searchQuery.trim() !== "") {
-      // Perform search with filters via API
       const performSearch = async () => {
-        const result = await apiClient.searchCards(searchQuery, activeFilters);
-        if(result.success){
-          setCardsData(result.data.properties);
+        const result = await apiClient.getAllProjects(1, 24, {
+          search: searchQuery,
+          field: activeFilters.creative_fields,
+          tool: activeFilters.tools,
+          color: activeFilters.color
+        });
+        if (result.success) {
+          setCardsData(result.data?.data || []);
         }
       }
       performSearch();
     } else if (hasFilters) {
-      // Apply filters only via API
       const performSearch = async () => {
-        const result = await apiClient.searchCards("", activeFilters);
-        if(result.success){
-          setCardsData(result.data.properties);
+        const result = await apiClient.getAllProjects(1, 24, {
+          field: activeFilters.creative_fields,
+          tool: activeFilters.tools,
+          color: activeFilters.color
+        });
+        if (result.success) {
+          setCardsData(result.data?.data || []);
         }
       }
       performSearch();
     } else if (recommendedStates !== "") {
-      const filtered = originalData.filter((item) =>
-        item.sort_by.includes(recommendedStates)
-      );
-      setCardsData(filtered.map((item) => item));
+      const sort = recommendedStates.toLowerCase().includes('appreciated')
+        ? 'most-appreciated'
+        : recommendedStates.toLowerCase().includes('view')
+          ? 'popular'
+          : undefined;
+
+      const performSort = async () => {
+        const result = await apiClient.getAllProjects(1, 24, {
+          sort
+        });
+        if (result.success) {
+          setCardsData(result.data?.data || []);
+        }
+      };
+      performSort();
     } else {
       setCardsData(originalData.map((item) => item));
     }
@@ -205,7 +232,7 @@ const Content = () => {
 
   const handleOpenCreatorProfile = (name) => {
     if (!name) return;
-    const filtered = originalData.filter((item) => item.creatorName === name);
+    const filtered = originalData.filter((item) => item?.owner?.username === name || item?.owner?.displayName === name);
     setCreatorProfileName(name);
     setCreatorProfileCards(filtered);
     setCreatorProfileOpen(true);
@@ -214,7 +241,7 @@ const Content = () => {
   const navigateToCreatorProfile = (creatorName) => {
     if (!creatorName) return;
     setCreatorProfileName(creatorName);
-    const filtered = originalData.filter((item) => item.creatorName === creatorName);
+    const filtered = originalData.filter((item) => item?.owner?.username === creatorName || item?.owner?.displayName === creatorName);
     setCreatorProfileCards(filtered);
     setOpenModal(false);
     setCreatorProfileOpen(false);

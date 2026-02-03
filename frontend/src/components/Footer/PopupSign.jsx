@@ -6,8 +6,8 @@ import { validateSignupForm, getPasswordStrength } from '../../utils/validation'
 const PopupSign = () => {
   const { signupActive, setSignupActive } = useAppState();
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
+    username: '',
+    displayName: '',
     email: '',
     password: ''
   });
@@ -43,8 +43,8 @@ const PopupSign = () => {
     
     // Validate form
     const validation = validateSignupForm(
-      formData.firstName,
-      formData.lastName,
+      formData.username,
+      formData.displayName,
       formData.email,
       formData.password
     );
@@ -58,15 +58,15 @@ const PopupSign = () => {
     
     try {
       const result = await apiClient.register(
-        formData.firstName,
-        formData.lastName,
+        formData.username,
         formData.email,
-        formData.password
+        formData.password,
+        formData.displayName
       );
       
       if (result.success) {
         setMessage('✓ Registration successful! You can now log in.');
-        setFormData({ firstName: '', lastName: '', email: '', password: '' });
+        setFormData({ username: '', displayName: '', email: '', password: '' });
         setErrors({});
         setPasswordStrength(null);
         setTimeout(() => setSignupActive(false), 2000);
@@ -90,36 +90,36 @@ const PopupSign = () => {
       <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold mb-6 text-center">Sign Up</h2>
         <form onSubmit={handleSignUp} className="space-y-4">
-          {/* First Name */}
+          {/* Username */}
           <div>
             <input
               type="text"
-              name="firstName"
-              placeholder="First Name"
-              value={formData.firstName}
+              name="username"
+              placeholder="Username (3-30 chars, alphanumeric)"
+              value={formData.username}
               onChange={handleInputChange}
               required
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 ${
-                errors.firstName ? 'border-red-500' : 'border-gray-300'
+                errors.username ? 'border-red-500' : 'border-gray-300'
               }`}
             />
-            {errors.firstName && <p className="text-red-500 text-sm mt-1">{errors.firstName}</p>}
+            {errors.username && <p className="text-red-500 text-sm mt-1">{errors.username}</p>}
           </div>
 
-          {/* Last Name */}
+          {/* Display Name */}
           <div>
             <input
               type="text"
-              name="lastName"
-              placeholder="Last Name"
-              value={formData.lastName}
+              name="displayName"
+              placeholder="Display Name"
+              value={formData.displayName}
               onChange={handleInputChange}
               required
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 ${
-                errors.lastName ? 'border-red-500' : 'border-gray-300'
+                errors.displayName ? 'border-red-500' : 'border-gray-300'
               }`}
             />
-            {errors.lastName && <p className="text-red-500 text-sm mt-1">{errors.lastName}</p>}
+            {errors.displayName && <p className="text-red-500 text-sm mt-1">{errors.displayName}</p>}
           </div>
 
           {/* Email */}

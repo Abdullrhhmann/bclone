@@ -1,12 +1,12 @@
 import React from 'react'
 import { useAppState } from '../../context/Context'
+import apiClient from '../../services/apiClient'
 
 const LogIn = () => {
   const { setLoginActive, isAuthenticated, setIsAuthenticated, setUser } = useAppState();
   
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
+  const handleLogout = async () => {
+    await apiClient.logout();
     setIsAuthenticated(false);
     setUser(null);
   };
